@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dự đoán giá xăng dầu Việt Nam</title>
+<meta name="description" content="Dự đoán giá cơ sở xăng dầu cho chu kỳ điều hành tiếp theo, tính toán tự động từ bản tin của Bộ Công Thương và giá dầu thô thế giới — không dùng AI, không phỏng đoán cảm tính." />
+<meta property="og:title" content="Dự đoán giá xăng dầu Việt Nam" />
+<meta property="og:description" content="Dự đoán giá cơ sở xăng dầu cho chu kỳ tiếp theo — tính toán tự động, minh bạch công thức và dữ liệu." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23d97706'/%3E%3Cpath d='M11 24V10.5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2V24' stroke='%23fff' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M19 13.5l2.4 1.8a2 2 0 0 1 .8 1.6V21a1.6 1.6 0 0 1-3.2 0v-2' stroke='%23fff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='9' y1='24' x2='17' y2='24' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f5f5f4;
+    --border: rgba(24,24,27,0.09);
+    --border-strong: rgba(24,24,27,0.14);
+    --text: #18181b;
+    --text-muted: #6b6b74;
+    --text-faint: #9a9aa2;
+    --accent: #b45309;
+    --accent-bg: #fef3e2;
+    --accent-line: #d97706;
+    --warn: #b91c1c;
+    --warn-bg: #fef2f2;
+    --good: #15803d;
+    --shadow-diffuse: 0 24px 48px -24px rgba(24,24,27,0.14), 0 2px 6px -2px rgba(24,24,27,0.06);
+    --radius-lg: 1.75rem;
+    --radius-md: 1.125rem;
+    --radius-sm: 0.6rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c0c0d;
+      --surface: #17171a;
+      --surface-2: #1e1e22;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.14);
+      --text: #f4f4f5;
+      --text-muted: #a4a4ac;
+      --text-faint: #6f6f78;
+      --accent: #f59e0b;
+      --accent-bg: rgba(245,158,11,0.12);
+      --accent-line: #f59e0b;
+      --warn: #f87171;
+      --warn-bg: rgba(248,113,113,0.1);
+      --good: #4ade80;
+      --shadow-diffuse: 0 24px 48px -24px rgba(0,0,0,0.55), 0 2px 6px -2px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c0c0d;
+    --surface: #17171a;
+    --surface-2: #1e1e22;
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+    --text: #f4f4f5;
+    --text-muted: #a4a4ac;
+    --text-faint: #6f6f78;
+    --accent: #f59e0b;
+    --accent-bg: rgba(245,158,11,0.12);
+    --accent-line: #f59e0b;
+    --warn: #f87171;
+    --warn-bg: rgba(248,113,113,0.1);
+    --good: #4ade80;
+    --shadow-diffuse: 0 24px 48px -24px rgba(0,0,0,0.55), 0 2px 6px -2px rgba(0,0,0,0.3);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-feature-settings: "tnum"; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 1.5rem; }
+  @media (max-width: 767px) { .wrap { padding: 0 1.1rem; } }
+
+  a { color: inherit; }
+
+  /* ---------- Header ---------- */
+  header.site {
+    position: sticky; top: 0; z-index: 40;
+    backdrop-filter: blur(14px) saturate(160%);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .site-bar { display: flex; align-items: center; justify-content: space-between; height: 4.25rem; gap: 1rem; }
+  .brand { display: flex; align-items: center; gap: 0.65rem; text-decoration: none; }
+  .brand-mark {
+    width: 2rem; height: 2rem; border-radius: 0.6rem;
+    background: linear-gradient(160deg, var(--accent-line), var(--accent));
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .brand-mark svg { width: 1.05rem; height: 1.05rem; stroke: #fff; }
+  .brand-name { font-weight: 700; font-size: 0.98rem; letter-spacing: -0.01em; }
+  .brand-name small { display: block; font-weight: 500; font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0; }
+
+  .site-actions { display: flex; align-items: center; gap: 0.6rem; }
+  .live-pill {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font-size: 0.76rem; color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: 99px; padding: 0.35rem 0.75rem 0.35rem 0.6rem;
+  }
+  .live-dot { width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--good); flex-shrink: 0; animation: pulse-dot 2.2s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 45%, transparent);} 50% { opacity: 0.75; box-shadow: 0 0 0 4px transparent; } }
+
+  .theme-toggle {
+    width: 2.15rem; height: 2.15rem; border-radius: 0.6rem; border: 1px solid var(--border);
+    background: var(--surface); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--text-muted); transition: transform .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .theme-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+  .theme-toggle:active { transform: scale(0.94); }
+  .theme-toggle svg { width: 1rem; height: 1rem; }
+
+  @media (max-width: 640px) { .live-pill span.long { display: none; } }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 3.25rem 0 2.5rem; }
+  .hero-head { max-width: 46rem; margin-bottom: 2.1rem; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    font-size: 0.74rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 0.9rem;
+  }
+  .eyebrow::before { content: ""; width: 1.1rem; height: 1.5px; background: var(--accent-line); }
+  h1.hero-title { font-size: clamp(1.7rem, 3.6vw, 2.55rem); line-height: 1.12; letter-spacing: -0.025em; font-weight: 700; margin: 0 0 0.85rem; }
+  .hero-sub { color: var(--text-muted); font-size: 1.01rem; max-width: 42rem; margin: 0; }
+
+  .hero-grid {
+    display: grid; grid-template-columns: 1.55fr 1fr; gap: 1.1rem;
+  }
+  @media (max-width: 860px) { .hero-grid { grid-template-columns: 1fr; } }
+
+  .flagship {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 2.1rem 2.2rem; box-shadow: var(--shadow-diffuse);
+    display: flex; flex-direction: column; justify-content: space-between; gap: 1.6rem;
+    position: relative; overflow: hidden;
+  }
+  .flagship::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%);
+    opacity: 0; transition: opacity .3s ease;
+  }
+  .flagship:hover::after { opacity: 1; }
+  .flagship-label { font-size: 0.9rem; color: var(--text-muted); font-weight: 500; }
+  .flagship-label b { color: var(--text); font-weight: 600; }
+  .flagship-price { font-size: clamp(2.4rem, 5.6vw, 3.6rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .flagship-price sup { font-size: 1.05rem; font-weight: 500; color: var(--text-muted); margin-left: 0.4rem; }
+  .flagship-range { font-size: 0.88rem; color: var(--text-faint); }
+  .flagship-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .chip {
+    font-size: 0.74rem; font-weight: 500; padding: 0.3rem 0.65rem; border-radius: 99px;
+    background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border);
+  }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+
+  .stat-stack { display: flex; flex-direction: column; gap: 1.1rem; }
+  .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; flex: 1; }
+  @media (max-width: 860px) { .stat-row { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 480px) { .stat-row { grid-template-columns: 1fr; } }
+
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 1.15rem 1.25rem; display: flex; flex-direction: column; gap: 0.5rem;
+    transition: border-color .18s ease, transform .18s ease;
+  }
+  .stat-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+  .stat-name { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); }
+  .stat-price { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }
+  .stat-price small { font-size: 0.72rem; font-weight: 500; color: var(--text-faint); margin-left: 0.25rem; }
+  .stat-range { font-size: 0.75rem; color: var(--text-faint); }
+
+  /* ---------- Sections ---------- */
+  section.block { padding: 2.6rem 0; border-top: 1px solid var(--border); }
+  .block-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  h2.block-title { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 0.35rem; }
+  .block-desc { color: var(--text-muted); font-size: 0.92rem; margin: 0; max-width: 40rem; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .tab-btn {
+    font-family: inherit; font-size: 0.82rem; font-weight: 500; color: var(--text-muted);
+    background: transparent; border: 1px solid var(--border); border-radius: 99px;
+    padding: 0.4rem 0.85rem; cursor: pointer; transition: all .15s ease;
+  }
+  .tab-btn:hover { border-color: var(--border-strong); color: var(--text); }
+  .tab-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 1.5rem 1.6rem 1rem; box-shadow: var(--shadow-diffuse);
+  }
+  .chart-canvas-wrap { position: relative; height: 320px; }
+  @media (max-width: 640px) { .chart-canvas-wrap { height: 240px; } }
+
+  /* Methodology */
+  .method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--border); }
+  @media (max-width: 767px) { .method-grid { grid-template-columns: 1fr; } }
+  .method-item { padding: 1.4rem 1.5rem; border-bottom: 1px solid var(--border); }
+  .method-item:not(:last-child) { border-right: 1px solid var(--border); }
+  @media (max-width: 767px) { .method-item:not(:last-child) { border-right: none; } }
+  .method-num { font-size: 0.74rem; font-weight: 600; color: var(--accent); margin-bottom: 0.5rem; }
+  .method-item h3 { font-size: 0.98rem; font-weight: 600; margin: 0 0 0.4rem; }
+  .method-item p { font-size: 0.86rem; color: var(--text-muted); margin: 0; line-height: 1.55; }
+
+  /* Caveats */
+  .caveat-list { display: flex; flex-direction: column; }
+  .caveat { display: flex; gap: 1rem; padding: 1.1rem 0; border-bottom: 1px solid var(--border); }
+  .caveat:last-child { border-bottom: none; }
+  .caveat-icon { width: 2rem; height: 2rem; border-radius: 0.55rem; background: var(--warn-bg); color: var(--warn); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .caveat-icon svg { width: 1.05rem; height: 1.05rem; }
+  .caveat h4 { font-size: 0.92rem; font-weight: 600; margin: 0 0 0.25rem; }
+  .caveat p { font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.55; }
+
+  /* States: loading skeleton */
+  .skel { position: relative; overflow: hidden; background: var(--surface-2); border-radius: 0.5rem; }
+  .skel::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 6%, transparent), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+  .skel-line { height: 0.85rem; margin-bottom: 0.5rem; }
+  .skel-price { height: 3rem; width: 70%; margin: 0.5rem 0; }
+
+  /* Error / empty banners */
+  .banner {
+    display: flex; align-items: flex-start; gap: 0.9rem; padding: 1.1rem 1.3rem;
+    border-radius: var(--radius-md); border: 1px solid var(--border);
+  }
+  .banner.error { background: var(--warn-bg); border-color: transparent; }
+  .banner-icon { flex-shrink: 0; margin-top: 0.1rem; }
+  .banner h4 { margin: 0 0 0.25rem; font-size: 0.92rem; font-weight: 600; }
+  .banner p { margin: 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.55; }
+  .retry-btn {
+    font-family: inherit; font-size: 0.8rem; font-weight: 600; margin-top: 0.7rem;
+    background: var(--text); color: var(--bg); border: none; border-radius: 0.5rem;
+    padding: 0.45rem 0.9rem; cursor: pointer; transition: transform .12s ease;
+  }
+  .retry-btn:active { transform: scale(0.97); }
+
+  [hidden] { display: none !important; }
+
+  /* Footer */
+  footer.site {
+    border-top: 1px solid var(--border); padding: 2.4rem 0 3rem; margin-top: 1rem;
+  }
+  .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; }
+  .foot-note { font-size: 0.82rem; color: var(--text-faint); max-width: 30rem; line-height: 1.6; }
+  .foot-links { display: flex; gap: 1.3rem; font-size: 0.83rem; color: var(--text-muted); }
+  .foot-links a { text-decoration: none; }
+  .foot-links a:hover { color: var(--text); }
+
+  .fade-up { animation: fadeUp .5s cubic-bezier(0.16,1,0.3,1) both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-bar">
+    <a class="brand" href="#top">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20V6a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 13 6v14"/><path d="M13 9.5l3 2.2a2 2 0 0 1 .8 1.6V17a1.2 1.2 0 0 0 2.4 0v-4"/><line x1="4" y1="20" x2="14" y2="20"/></svg>
+      </span>
+      <span class="brand-name">Dự đoán giá xăng dầu<small>Không dùng AI &middot; tính từ dữ liệu thật</small></span>
+    </a>
+    <div class="site-actions">
+      <span class="live-pill"><span class="live-dot"></span><span class="long" id="last-sync-label">đang tải…</span></span>
+      <button class="theme-toggle" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" title="Đổi giao diện sáng/tối">
+        <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap hero">
+    <div class="hero-head">
+      <span class="eyebrow">Chu kỳ tiếp theo &middot; chưa công bố chính thức</span>
+      <h1 class="hero-title">Dự đoán giá cơ sở, tính tự động từ bản tin điều hành của Bộ Công Thương</h1>
+      <p class="hero-sub">Không có mô hình ngôn ngữ hay phỏng đoán nào tham gia vào con số dưới đây — chỉ có công thức Nghị định 83/2014 + 95/2021, giá dầu thô thế giới thời gian thực, và dữ liệu Quỹ bình ổn giá đã công bố.</p>
+    </div>
+
+    <div id="hero-loading" class="hero-grid">
+      <div class="flagship">
+        <div class="skel skel-line" style="width:40%"></div>
+        <div class="skel skel-price"></div>
+        <div class="skel skel-line" style="width:55%"></div>
+      </div>
+      <div class="stat-stack">
+        <div class="stat-row">
+          <div class="stat-card"><div class="skel skel-line" style="width:60%"></div><div class="skel skel-line" style="height:1.5rem;width:80%"></div></div>
+          <div class="stat-card"><div class="skel skel-line" style="width:60%"></div><div class="skel skel-line" style="height:1.5rem;width:80%"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-card"><div class="skel skel-line" style="width:60%"></div><div class="skel skel-line" style="height:1.5rem;width:80%"></div></div>
+          <div class="stat-card"><div class="skel skel-line" style="width:60%"></div><div class="skel skel-line" style="height:1.5rem;width:80%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="hero-empty" class="banner" hidden>
+      <div class="banner-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      </div>
+      <div>
+        <h4>Chưa có dữ liệu dự đoán</h4>
+        <p>Hệ thống tự động cập nhật hàng tuần. Nếu bạn thấy trang này lần đầu, chu kỳ đồng bộ đầu tiên có thể chưa chạy — quay lại sau, hoặc xem lịch sử giá đã công bố bên dưới.</p>
+      </div>
+    </div>
+
+    <div id="hero-error" class="banner error" hidden>
+      <div class="banner-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div>
+        <h4>Không tải được dữ liệu</h4>
+        <p id="hero-error-detail">Có sự cố khi kết nối tới cơ sở dữ liệu. Vui lòng thử lại.</p>
+        <button class="retry-btn" onclick="loadEverything()">Thử lại</button>
+      </div>
+    </div>
+
+    <div id="hero-content" class="hero-grid fade-up" hidden></div>
+  </div>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <h2 class="block-title">Diễn biến giá đã công bố</h2>
+          <p class="block-desc">Giá bán lẻ thực tế theo từng chu kỳ MOIT đã công bố — không phải số dự đoán.</p>
+        </div>
+        <div class="tabs" id="chart-tabs"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-canvas-wrap">
+          <canvas id="price-chart"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <h2 class="block-title">Cách tính hoạt động</h2>
+          <p class="block-desc">Ba bước, hoàn toàn tự động, không có bước nào do con người ước lượng bằng cảm tính.</p>
+        </div>
+      </div>
+      <div class="method-grid">
+        <div class="method-item">
+          <div class="method-num">01</div>
+          <h3>Thu thập dữ liệu gốc</h3>
+          <p>Quét trực tiếp các bản tin điều hành giá xăng dầu công bố trên moit.gov.vn — giá thế giới bình quân, giá bán lẻ, và mức trích lập/chi Quỹ bình ổn giá của từng chu kỳ đã qua.</p>
+        </div>
+        <div class="method-item">
+          <div class="method-num">02</div>
+          <h3>Ước tính chu kỳ đang mở</h3>
+          <p>Với những ngày trong chu kỳ mới chưa có giá thế giới thật, hệ thống dùng giá dầu thô Dubai thời gian thực (FRED) đi qua một mô hình hồi quy đã khớp với dữ liệu lịch sử của từng sản phẩm.</p>
+        </div>
+        <div class="method-item">
+          <div class="method-num">03</div>
+          <h3>Áp công thức giá cơ sở</h3>
+          <p>Cùng công thức Nghị định 83/2014 + 95/2021 (Điều 38a) đã dùng để khớp lại chính xác các chu kỳ đã công bố — cộng thuế, phí, và mức Quỹ bình ổn kỳ trước làm giả định.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <h2 class="block-title">Lưu ý &amp; giới hạn</h2>
+          <p class="block-desc">Nói thẳng những gì mô hình không biết, thay vì che giấu.</p>
+        </div>
+      </div>
+      <div class="caveat-list" id="caveat-list">
+        <div class="caveat">
+          <div class="caveat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+          <div>
+            <h4>Quỹ bình ổn giá là quyết định hành chính, không thể tính trước</h4>
+            <p>Mô hình giả định mức trích lập/chi Quỹ của chu kỳ tới bằng đúng chu kỳ gần nhất — đây là điểm mù đã biết, không phải sai số ngẫu nhiên.</p>
+          </div>
+        </div>
+        <div class="caveat">
+          <div class="caveat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></div>
+          <div>
+            <h4>Tỷ giá được giữ cố định theo giá trị gần nhất</h4>
+            <p>Chưa có nguồn tỷ giá VCB theo ngày thời gian thực trong phạm vi hiện tại — số VND/USD dùng cho cả chu kỳ là mức bình quân của chu kỳ thật gần nhất.</p>
+          </div>
+        </div>
+        <div class="caveat">
+          <div class="caveat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+          <div>
+            <h4>Xăng E5RON92 và E10RON95-III thường bị dự đoán thấp</h4>
+            <p>Trong mọi chu kỳ kiểm tra gần đây, hai sản phẩm xăng pha ethanol này có giá thật cao hơn dự đoán khoảng 4-5% — nghi do chi phí pha chế ethanol trong nước chưa được đưa vào mô hình. Xem đây là mức sàn, không phải mức khả dĩ nhất.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap foot-grid">
+    <p class="foot-note">Dữ liệu nguồn: Bộ Công Thương (moit.gov.vn) và giá dầu thô Dubai (FRED, ngân hàng Dự trữ Liên bang St. Louis). Trang này chỉ mang tính tham khảo, không phải công bố chính thức và không phải lời khuyên tài chính — giá bán lẻ thực tế do liên Bộ Công Thương – Tài chính công bố mỗi kỳ điều hành mới là căn cứ chính thức.</p>
+    <div class="foot-links">
+      <a href="https://moit.gov.vn" target="_blank" rel="noopener">moit.gov.vn</a>
+      <a href="https://github.com/Carot-Boi/du-doan-gia-xang" target="_blank" rel="noopener">Mã nguồn</a>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+  // Public by design: RLS on the Supabase project restricts this anon key
+  // to SELECT-only on every table (see supabase/schema.sql). All writes
+  // come from scripts/sync_to_supabase.py using the service_role key,
+  // which never reaches the browser.
+  const SUPABASE_URL = "https://yitxeacwnasbcshfseqm.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_inmKXKpOAR45GmkpErQR5Q_-vaLfIbU";
+  const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const PRODUCT_LABELS = {
+    E5RON92: "Xăng E5 RON92",
+    RON95III: "Xăng RON95-III",
+    E10RON95III: "Xăng E10 RON95-III",
+    DIESEL_0_05S: "Dầu Diesel 0,05S",
+    FO_180CST_3_5S: "Dầu FO 180CST 3,5S",
+    KEROSENE: "Dầu hỏa",
+  };
+  const FLAGSHIP_CODE = "RON95III";
+  const PRODUCT_ORDER = ["RON95III", "E5RON92", "E10RON95III", "DIESEL_0_05S", "FO_180CST_3_5S"];
+
+  function fmtVnd(n) {
+    return Math.round(n).toLocaleString("vi-VN");
+  }
+  function fmtDate(d) {
+    return new Date(d).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+  function timeAgo(iso) {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(diffMs / 86400000);
+    if (days <= 0) return "hôm nay";
+    if (days === 1) return "1 ngày trước";
+    return `${days} ngày trước`;
+  }
+
+  function show(id) { document.getElementById(id).hidden = false; }
+  function hide(id) { document.getElementById(id).hidden = true; }
+
+  function renderHero(run, predictions) {
+    document.getElementById("last-sync-label").textContent = `cập nhật ${timeAgo(run.run_at)}`;
+
+    const byCode = Object.fromEntries(predictions.map(p => [p.retail_product_code, p]));
+    const flagship = byCode[FLAGSHIP_CODE] || predictions[0];
+    const others = PRODUCT_ORDER.filter(c => c !== flagship.retail_product_code && byCode[c]).map(c => byCode[c]);
+
+    const flagshipCaveat = flagship.known_bias_caveat
+      ? `<span class="chip warn">Có xu hướng thấp hơn giá thật ~4-5%</span>` : "";
+
+    const flagshipHtml = `
+      <div class="flagship" id="flagship-card">
+        <div>
+          <div class="flagship-label">${PRODUCT_LABELS[flagship.retail_product_code] || flagship.retail_product_code} &middot; giả định kết thúc chu kỳ <b>${fmtDate(run.cycle_end_assumed)}</b></div>
+          <div class="flagship-price">${fmtVnd(flagship.predicted_vnd)}<sup>đ/${flagship.unit === "VND/kg" || flagship.unit === "kg" ? "kg" : "lít"}</sup></div>
+          <div class="flagship-range">Khoảng dao động ${fmtVnd(flagship.low_vnd)} – ${fmtVnd(flagship.high_vnd)} đ</div>
+        </div>
+        <div class="flagship-meta">
+          <span class="chip">${flagship.known_days}/${flagship.window_days_total} ngày đã có dữ liệu thật</span>
+          <span class="chip">Tỷ giá giả định: ${fmtVnd(run.fx_rate)} đ/USD</span>
+          ${flagshipCaveat}
+        </div>
+      </div>`;
+
+    const statsHtml = others.map(p => `
+      <div class="stat-card">
+        <div class="stat-name">${PRODUCT_LABELS[p.retail_product_code] || p.retail_product_code}</div>
+        <div class="stat-price mono">${fmtVnd(p.predicted_vnd)}<small>đ</small></div>
+        <div class="stat-range mono">${fmtVnd(p.low_vnd)} – ${fmtVnd(p.high_vnd)}</div>
+        ${p.known_bias_caveat ? '<span class="chip warn" style="width:fit-content">Xu hướng thấp hơn thật</span>' : ""}
+      </div>`).join("");
+
+    // pair the 4 "other" cards into two rows of two
+    const rows = [];
+    for (let i = 0; i < others.length; i += 2) {
+      rows.push(`<div class="stat-row">${statsHtml.split('</div>\n\n').slice(i, i + 2).join("")}</div>`);
+    }
+
+    const container = document.getElementById("hero-content");
+    container.innerHTML = flagshipHtml + `<div class="stat-stack">
+        <div class="stat-row">${others.slice(0,2).map(p => statCardHtml(p)).join("")}</div>
+        <div class="stat-row">${others.slice(2,4).map(p => statCardHtml(p)).join("")}</div>
+      </div>`;
+
+    hide("hero-loading");
+    show("hero-content");
+
+    // subtle spotlight-follow on the flagship card
+    const card = document.getElementById("flagship-card");
+    if (card) {
+      card.addEventListener("mousemove", (e) => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty("--mx", `${e.clientX - r.left}px`);
+        card.style.setProperty("--my", `${e.clientY - r.top}px`);
+      });
+    }
+  }
+
+  function statCardHtml(p) {
+    return `
+      <div class="stat-card">
+        <div class="stat-name">${PRODUCT_LABELS[p.retail_product_code] || p.retail_product_code}</div>
+        <div class="stat-price mono">${fmtVnd(p.predicted_vnd)}<small>đ</small></div>
+        <div class="stat-range mono">${fmtVnd(p.low_vnd)} – ${fmtVnd(p.high_vnd)}</div>
+        ${p.known_bias_caveat ? '<span class="chip warn">Xu hướng thấp hơn thật</span>' : ""}
+      </div>`;
+  }
+
+  async function loadHero() {
+    hide("hero-empty"); hide("hero-error"); hide("hero-content");
+    show("hero-loading");
+    try {
+      const { data: run, error: runErr } = await db
+        .from("prediction_runs").select("*").order("run_at", { ascending: false }).limit(1).maybeSingle();
+      if (runErr) throw runErr;
+      if (!run) { hide("hero-loading"); show("hero-empty"); return; }
+
+      const { data: preds, error: predErr } = await db
+        .from("predictions").select("*").eq("run_id", run.id);
+      if (predErr) throw predErr;
+      if (!preds || preds.length === 0) { hide("hero-loading"); show("hero-empty"); return; }
+
+      renderHero(run, preds);
+    } catch (err) {
+      console.error(err);
+      document.getElementById("hero-error-detail").textContent =
+        "Có sự cố khi kết nối tới cơ sở dữ liệu: " + (err.message || err);
+      hide("hero-loading");
+      show("hero-error");
+    }
+  }
+
+  // ---------- Historical chart ----------
+  let chartInstance = null;
+  let historyCache = {};
+
+  async function fetchHistory(code) {
+    if (historyCache[code]) return historyCache[code];
+    const { data, error } = await db
+      .from("retail_prices")
+      .select("price_vnd, effective_at")
+      .eq("product_code", code)
+      .not("effective_at", "is", null)
+      .not("price_vnd", "is", null)
+      .order("effective_at", { ascending: true });
+    if (error) throw error;
+    historyCache[code] = data;
+    return data;
+  }
+
+  function accentColorForChart() {
+    return getComputedStyle(document.documentElement).getPropertyValue("--accent-line").trim() || "#d97706";
+  }
+
+  async function renderChart(code) {
+    const wrap = document.querySelector(".chart-canvas-wrap");
+    try {
+      const rows = await fetchHistory(code);
+      const ctx = document.getElementById("price-chart");
+      const labels = rows.map(r => fmtDate(r.effective_at));
+      const values = rows.map(r => r.price_vnd);
+      const color = accentColorForChart();
+
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: PRODUCT_LABELS[code] || code,
+            data: values,
+            borderColor: color,
+            backgroundColor: color + "22",
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.25,
+            fill: true,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: (item) => ` ${fmtVnd(item.parsed.y)} đ` },
+            },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 8, color: "#8a8a92" } },
+            y: { grid: { color: "rgba(128,128,128,0.12)" }, ticks: { color: "#8a8a92", callback: (v) => fmtVnd(v) } },
+          },
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      wrap.innerHTML = `<div class="banner error" style="margin-top:1rem"><div class="banner-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg></div><div><h4>Không tải được lịch sử giá</h4><p>${err.message || err}</p></div></div>`;
+    }
+  }
+
+  function buildTabs() {
+    const tabWrap = document.getElementById("chart-tabs");
+    tabWrap.innerHTML = PRODUCT_ORDER.map((code, i) =>
+      `<button class="tab-btn${i === 0 ? " active" : ""}" data-code="${code}">${PRODUCT_LABELS[code]}</button>`
+    ).join("");
+    tabWrap.addEventListener("click", (e) => {
+      const btn = e.target.closest(".tab-btn");
+      if (!btn) return;
+      tabWrap.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderChart(btn.dataset.code);
+    });
+    renderChart(PRODUCT_ORDER[0]);
+  }
+
+  // ---------- Theme toggle ----------
+  function initTheme() {
+    const stored = (() => { try { return localStorage.getItem("theme"); } catch { return null; } })();
+    if (stored) document.documentElement.setAttribute("data-theme", stored);
+    updateThemeIcon();
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") ||
+        (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      const next = current === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("theme", next); } catch {}
+      updateThemeIcon();
+      if (chartInstance) {
+        const activeTab = document.querySelector(".tab-btn.active");
+        renderChart(activeTab ? activeTab.dataset.code : PRODUCT_ORDER[0]);
+      }
+    });
+  }
+  function updateThemeIcon() {
+    const current = document.documentElement.getAttribute("data-theme") ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const icon = document.getElementById("theme-icon");
+    icon.innerHTML = current === "dark"
+      ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+      : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+  }
+
+  function loadEverything() {
+    loadHero();
+    buildTabs();
+  }
+
+  initTheme();
+  loadEverything();
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+name: Weekly data update
+
+# MOIT publishes a new pricing bulletin roughly every Thursday afternoon
+# (VN time, UTC+7) -- see README for the 7-day cycle mechanics. This runs
+# Friday 02:00 UTC (09:00 VN time) to give MOIT's own site a day to settle,
+# plus a manual trigger for re-running on demand (e.g. right after fixing a
+# bug in the pipeline, like the two found in the d96338e commit).
+on:
+  schedule:
+    - cron: "0 2 * * 5"
+  workflow_dispatch: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # data/db + data/raw_html are gitignored on purpose (see .gitignore and
+      # tests/test_formula.py's docstring on why a fresh checkout shouldn't
+      # depend on a committed DB) -- they persist across runs via the
+      # Actions cache instead. restore-keys falls back to the most recent
+      # cache with this prefix if no exact key match exists yet, so the
+      # very first run just starts from an empty DB and backfill.py
+      # rebuilds it (slow, one-time); every run after that only needs to
+      # discover/parse whatever's new since last week, sparing MOIT's site
+      # from a full re-crawl every run.
+      - name: Restore cached local DB + raw HTML
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/db
+            data/raw_html
+          key: moit-data-${{ github.run_id }}
+          restore-keys: moit-data-
+
+      - name: Backfill (discover + parse any new bulletins)
+        run: python scripts/backfill.py
+
+      - name: Save local DB + raw HTML cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/db
+            data/raw_html
+          key: moit-data-${{ github.run_id }}
+
+      - name: Sync to Supabase (mirror tables + append prediction snapshot)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python scripts/sync_to_supabase.py
+
+      - name: Send email alert (skips itself if ALERT_EMAIL_* secrets aren't set)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          ALERT_EMAIL_FROM: ${{ secrets.ALERT_EMAIL_FROM }}
+          ALERT_EMAIL_APP_PASSWORD: ${{ secrets.ALERT_EMAIL_APP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: python scripts/send_alert_email.py
