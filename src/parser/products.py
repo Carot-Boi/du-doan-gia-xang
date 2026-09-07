@@ -88,6 +88,22 @@ BOG_PRODUCTS = {
     "FO_180CST_3_5S": {"aliases": ["Dầu madút", "Dầu mazut"], "unit": "VND/kg"},
 }
 
+# BOG_PRODUCTS -> RETAIL_PRODUCTS mapping. Needed because bog_actions is keyed
+# by the BOG section's own short labels (one line item can cover more than one
+# retail SKU): "Xăng sinh học" is published as ONE đồng/lít figure that MOIT's
+# bulletins apply to both ethanol blends (E5RON92 and E10RON95-III) alike --
+# there is no evidence in any bulletin of a per-blend split, so both retail
+# codes get the same bog_net_vnd for a given bulletin. "Xăng không chì" is
+# the older (pre-E10-mandate) BOG line-item name; mapped only to RON95III,
+# its direct predecessor -- not to E5RON92, whose own reference (RON92) was
+# never called "không chì" in any observed bulletin.
+BOG_TO_RETAIL_PRODUCTS: dict[str, list[str]] = {
+    "XANG_SINH_HOC": ["E5RON92", "E10RON95III"],
+    "XANG_KHONG_CHI": ["RON95III"],
+    "DIESEL_0_05S": ["DIESEL_0_05S"],
+    "FO_180CST_3_5S": ["FO_180CST_3_5S"],
+}
+
 
 def world_label_to_code(label: str) -> str | None:
     """Map a table header cell (e.g. 'X92', 'DO 0,05') to a WORLD_PRODUCTS code."""

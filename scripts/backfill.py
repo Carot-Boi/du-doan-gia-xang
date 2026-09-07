@@ -21,6 +21,17 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+# Bulletin titles/warnings contain Vietnamese text. On Windows, stdout is
+# often opened with the system ANSI codepage (e.g. cp1258) rather than
+# UTF-8 -- especially when output is redirected to a file/log rather than
+# an interactive UTF-8-capable terminal -- which raises UnicodeEncodeError
+# on print() the moment a warning string contains an accented character.
+# Reconfiguring explicitly here makes the script robust regardless of how
+# it's invoked, rather than relying on callers to set PYTHONIOENCODING.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.db.schema import init_db

@@ -67,6 +67,32 @@ CREATE TABLE IF NOT EXISTS bog_actions (
     chi_su_dung_vnd INTEGER,
     unit TEXT
 );
+
+-- Phase 2: pricing-formula constants (Nghi dinh 83/2014 + 95/2021 Dieu 38a +
+-- later amendments). Keyed by (constant_key, product_code, effective_from)
+-- rather than a single "current value" table, because the whole point of
+-- this table is that historical bulletins must be scored against the
+-- constants that were actually in force on their own date, not today's.
+-- product_code = 'ALL' means the constant applies uniformly across products
+-- (e.g. import duty, VAT); a specific retail product_code overrides that
+-- for products where the rate genuinely differs (e.g. thue TTDB only
+-- applies to gasoline, never diesel/FO/kerosene -- see
+-- src/pricing/formula.py's is_gasoline() gate, which skips the lookup
+-- entirely for non-gasoline products rather than requiring a stored 0 row).
+-- effective_from/effective_to are inclusive ISO dates; NULL effective_to
+-- means "still in effect as of when this row was seeded".
+CREATE TABLE IF NOT EXISTS constants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    constant_key TEXT NOT NULL,
+    product_code TEXT NOT NULL,
+    value REAL NOT NULL,
+    unit TEXT,
+    effective_from TEXT,
+    effective_to TEXT,
+    source TEXT,
+    note TEXT,
+    UNIQUE(constant_key, product_code, effective_from)
+);
 """
 
 

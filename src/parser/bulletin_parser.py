@@ -410,7 +410,7 @@ def validate_cycle_averages(bulletin: ParsedBulletin, prev_date: date | None, th
     quotes for dates in [prev_date, this_date) — i.e. the PREVIOUS cycle's
     own date is INCLUDED and the current cycle's date is excluded (quotes
     run through the day before this bulletin). This differs subtly from a
-    same-blooded-but-slightly-off description of "strictly between both
+    plausible-sounding but incorrect description of "strictly between both
     dates" (excluding prev_date too) — that version does NOT reproduce the
     published numbers; including prev_date does, exactly.
 
