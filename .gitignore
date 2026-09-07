@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/raw_html/*.html
+data/raw_html/*.json
+data/db/*.sqlite3
+!data/raw_html/.gitkeep
+!data/db/.gitkeep
+*.egg-info/
+.DS_Store
+tmp_research/
+backfill_full_run.log
+*.log
