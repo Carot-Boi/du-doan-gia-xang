@@ -61,7 +61,24 @@ def run_backfill(db_path: Path, limit: int | None, use_brute_force: bool) -> Non
     if use_brute_force and bulletins:
         known_dates = [b.publish_time.date() for b in bulletins if b.publish_time]
         if known_dates:
-            gap_start, gap_end = min(known_dates), max(known_dates)
+            # IMPORTANT: gap_end must extend to TODAY, not just
+            # max(known_dates). Confirmed by hand (2026-09-07): MOIT
+            # silently stopped filing new fuel bulletins under Tier 1's
+            # category sometime after 2026-07-09, so Tier 1's own
+            # max(known_dates) can itself be stale by weeks -- real
+            # bulletins for 13/8/2026 and 27/8/2026 exist and are fetchable
+            # by direct URL, but Tier 1 never returns them, and the old
+            # `gap_end = max(known_dates)` here meant Tier 2 could only ever
+            # fill holes *inside* Tier 1's own range, never discover
+            # anything more recent than Tier 1's last (possibly stale)
+            # result. This is exactly the "site changed, discovery breaks
+            # silently" risk flagged in the design doc -- it was not
+            # hypothetical, it happened during this project's own
+            # development. Do not revert this without re-confirming Tier 1
+            # is current again (e.g. by hand-checking
+            # https://moit.gov.vn/tin-tuc/thi-truong-trong-nuoc against
+            # today's actual latest bulletin).
+            gap_start, gap_end = min(known_dates), max(max(known_dates), date.today())
             print(f"=== Tier 2: brute-force gap-fill probing Thursdays in [{gap_start}, {gap_end}] ===")
             bulletins2, stats2 = discover_all(session, brute_force_start=gap_start, brute_force_end=gap_end)
             print(f"Tier 2 (brute_force) probed {stats2.get('tier2_probed', 0)} candidate Thursdays, "

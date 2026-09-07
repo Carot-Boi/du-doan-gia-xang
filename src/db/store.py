@@ -103,6 +103,22 @@ def store_world_price_daily(conn: sqlite3.Connection, bulletin_id: int, rows: li
 
 
 def store_cycle_summary(conn: sqlite3.Connection, bulletin_id: int, rows: list[dict]) -> None:
+    """
+    Replace-on-reparse, unlike world_price_daily's deliberate append-only
+    design. A bulletin has exactly ONE set of "this is what was published"
+    facts -- re-parsing the SAME bulletin_id (e.g. re-running backfill.py,
+    or a future weekly re-check job re-fetching a bulletin to catch a late
+    correction) should replace its own derived rows, not accumulate
+    duplicates. Confirmed as a real bug (not hypothetical) during Phase 3:
+    re-running the backfill 2-3 times had silently tripled retail_prices/
+    cycle_summary/bog_actions row counts for every previously-processed
+    bulletin_id, inflating every backtest table's printed row count 3x
+    (means stayed correct only by coincidence, since duplication was
+    uniform across all rows -- this would NOT be safe once re-runs start
+    happening unevenly, e.g. a scheduled job re-fetching only this week's
+    bulletin).
+    """
+    conn.execute("DELETE FROM cycle_summary WHERE bulletin_id = ?", (bulletin_id,))
     for r in rows:
         conn.execute(
             """INSERT INTO cycle_summary
@@ -121,6 +137,8 @@ def store_cycle_summary(conn: sqlite3.Connection, bulletin_id: int, rows: list[d
 
 
 def store_retail_prices(conn: sqlite3.Connection, bulletin_id: int, rows: list[dict]) -> None:
+    """Replace-on-reparse -- see store_cycle_summary()'s docstring for why."""
+    conn.execute("DELETE FROM retail_prices WHERE bulletin_id = ?", (bulletin_id,))
     for r in rows:
         conn.execute(
             """INSERT INTO retail_prices
@@ -131,6 +149,8 @@ def store_retail_prices(conn: sqlite3.Connection, bulletin_id: int, rows: list[d
 
 
 def store_bog_actions(conn: sqlite3.Connection, bulletin_id: int, rows: list[dict]) -> None:
+    """Replace-on-reparse -- see store_cycle_summary()'s docstring for why."""
+    conn.execute("DELETE FROM bog_actions WHERE bulletin_id = ?", (bulletin_id,))
     for r in rows:
         conn.execute(
             """INSERT INTO bog_actions

@@ -407,6 +407,14 @@ def main() -> None:
             f"    BOG caveat          : bog_net_vnd={p.bog_net_vnd:,.0f} assumed = PREVIOUS cycle's real value "
             f"(next cycle's actual BOG decision is fundamentally unknowable -- see module docstring)"
         )
+        if p.retail_product_code in ("E5RON92", "E10RON95III"):
+            print(
+                "    KNOWN BIAS CAVEAT   : this product has underpredicted the real published price by "
+                "~4-5% in EVERY one of the last 4 cycles checked (Jun-Aug 2026), not just noise -- see "
+                "formula.py's module docstring. The real price is likely to land noticeably HIGHER than "
+                "the number above; treat this prediction as a floor, not a best estimate, until that gap "
+                "is understood (suspected: unmodeled domestic ethanol-blend cost)."
+            )
         print()
 
     if run.notes:
