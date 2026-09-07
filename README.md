@@ -1,9 +1,29 @@
-# du-doan-gia-xang — Phase 1: MOIT data foundation
+# du-doan-gia-xang — dự đoán giá xăng dầu Việt Nam
 
-Goal of this phase: build a reliable scraper + parser + local database of
-Vietnam's official MOIT (Bộ Công Thương) fuel-price bulletins — the
-ground-truth data source a later phase will use to predict the next price
-adjustment. **This phase does not implement any prediction logic.**
+Tự động, không dùng AI/LLM trong phần tính toán: dự đoán giá cơ sở cho chu
+kỳ điều hành xăng dầu tiếp theo, dựa trên bản tin thật của MOIT (Bộ Công
+Thương) và giá dầu thô thế giới thời gian thực.
+
+**Live dashboard:** https://carot-boi.github.io/du-doan-gia-xang/
+
+Bốn giai đoạn, mỗi giai đoạn build trên giai đoạn trước, không giai đoạn
+nào thay thế giai đoạn cũ:
+
+- **Phase 1** (dưới đây) — scraper + parser + SQLite: thu thập ground-truth
+  từ moit.gov.vn. Không có logic dự đoán nào ở đây.
+- **Phase 2** (`src/pricing/formula.py`, `src/pricing/calibrate.py`) —
+  công thức "giá cơ sở" theo Nghị định 83/2014 + 95/2021 (Điều 38a), khớp
+  lại chính xác các chu kỳ đã công bố (MAPE 1.57% trên dữ liệu sạch — xem
+  `formula.py`'s module docstring).
+- **Phase 3** (`scripts/predict_next_cycle.py`, `src/proxy/`,
+  `src/pricing/bridge.py`) — dự đoán chu kỳ CHƯA công bố, dùng giá dầu thô
+  Dubai thời gian thực (FRED) qua một cầu nối hồi quy đã khớp với lịch sử.
+- **Phase 4** (`docs/`, `supabase/`, `scripts/sync_to_supabase.py`,
+  `.github/workflows/`) — dashboard công khai + tự động hóa hàng tuần. Xem
+  mục "Phase 4" ở cuối file này.
+
+Phần B (phân tích tin tức bằng AI) được hoãn có chủ đích — xem lịch sử
+trao đổi của dự án — không nằm trong phạm vi 4 phase này.
 
 ## What's here
 
@@ -118,3 +138,49 @@ python -m pytest tests/ -v
 
 See `scripts/backfill.py`'s printed summary and this repo's actual
 `data/db/moit.sqlite3` for real, current backfill results.
+
+## Phase 4: public dashboard + weekly automation
+
+```
+supabase/
+  schema.sql              Postgres schema (mirror of the SQLite tables + prediction_runs/predictions)
+scripts/
+  sync_to_supabase.py      mirrors the local SQLite DB + appends a new prediction snapshot
+  send_alert_email.py      optional weekly email summary (Gmail SMTP + App Password)
+docs/
+  index.html               the public dashboard itself (no build step, plain HTML/CSS/JS)
+.github/workflows/
+  weekly-update.yml         Friday 09:00 VN time: backfill -> sync -> (optional) email
+```
+
+The local SQLite DB stays the pipeline's real source of truth (nothing
+about Phases 1-3 changed). `sync_to_supabase.py` pushes a read-only mirror
+of it to a public Supabase project after every backfill run, which
+`docs/index.html` reads directly via the Supabase JS client using the
+public anon key — safe to embed client-side because Row Level Security
+(see `supabase/schema.sql`) restricts that key to SELECT-only on every
+table. All writes go through the DB connection string, kept only as the
+`SUPABASE_DB_URL` GitHub Actions secret.
+
+Setup for a fresh clone (only needed once, already done for this repo):
+
+```bash
+# 1. Run supabase/schema.sql once against a new Supabase project (SQL Editor -> paste -> Run)
+# 2. Set the DB connection string locally and as a repo secret:
+echo "SUPABASE_DB_URL=postgresql://...pooler.supabase.com:5432/postgres" > .env
+gh secret set SUPABASE_DB_URL --body "postgresql://..."
+# 3. First sync:
+python scripts/sync_to_supabase.py
+# 4. Point docs/index.html's SUPABASE_URL / SUPABASE_ANON_KEY constants at the same project
+#    (Project Settings -> API), then enable GitHub Pages from /docs.
+```
+
+If your network can't resolve Supabase's direct-connection host (IPv6
+only, common on IPv4-only ISPs/CI runners), use the **Session pooler**
+connection string instead (Connect -> Direct Connection string ->
+Connection Method -> Session pooler) — confirmed necessary and working
+for this project's own setup.
+
+Email alerts are optional and no-op cleanly if `ALERT_EMAIL_FROM` /
+`ALERT_EMAIL_APP_PASSWORD` / `ALERT_EMAIL_TO` aren't set as repo secrets
+(see `.env.example`).
