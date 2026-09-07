@@ -12,3 +12,7 @@ data/db/*.sqlite3
 tmp_research/
 backfill_full_run.log
 *.log
+
+# Phase 3: live data-source API keys, if any are ever added (see
+# .env.example) -- never committed.
+.env
