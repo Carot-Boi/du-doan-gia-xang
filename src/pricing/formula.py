@@ -39,6 +39,16 @@ reproduce): overall MAPE improved 1.71% -> 1.45%. It's a clear, real win for
 FO_180CST_3_5S (residual spread 28.4% -> 11.7% of mean) and RON95III (48.0%
 -> 21.6%) -- confirms BOG swings were genuinely a big chunk of their noise.
 
+UPDATE (post-Phase-3 data fix): the 1.45% figure above was measured on a DB
+that turned out to have retail_prices/cycle_summary/bog_actions rows
+triplicated by a backfill re-run bug (see src/db/store.py's docstring) --
+the duplication was uniform so it didn't change the number, but it wasn't a
+clean measurement either. After fixing that bug and rebuilding the DB (also
+picking up 2 previously-undiscovered recent bulletins, see
+scripts/backfill.py's docstring), the same calibration now measures overall
+MAPE at 1.57% on clean, deduplicated data. Re-run scripts/validate_formula.py
+to reproduce.
+
 It did NOT meaningfully fix E5RON92 or E10RON95III, whose worst errors (the
 two most recent cycles, both ~-5% and ~-2 to -4%) are essentially unchanged
 -- XANG_SINH_HOC's trích_lập is only ~100-200đ there, far too small to
