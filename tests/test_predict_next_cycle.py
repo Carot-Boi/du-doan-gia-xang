@@ -175,7 +175,9 @@ def test_predict_products_runs_and_returns_sane_values(conn):
     assert not run.notes, f"expected every product to be predictable, got notes: {run.notes}"
 
     predicted_codes = {p.retail_product_code for p in run.predictions}
-    assert predicted_codes == {"E5RON92", "RON95III", "E10RON95III", "DIESEL_0_05S", "FO_180CST_3_5S"}
+    # RON95III is deliberately excluded -- see PREDICTABLE_RETAIL_PRODUCTS's
+    # comment (discontinued in practice since 2026-05-28).
+    assert predicted_codes == {"E5RON92", "E10RON95III", "DIESEL_0_05S", "FO_180CST_3_5S"}
 
     for p in run.predictions:
         assert p.predicted_vnd > 0

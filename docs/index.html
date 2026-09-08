@@ -346,6 +346,7 @@
         <div class="tabs" id="chart-tabs"></div>
       </div>
       <div class="chart-card">
+        <p id="chart-note" class="block-desc" hidden style="margin-bottom:1rem"></p>
         <div class="chart-canvas-wrap">
           <canvas id="price-chart"></canvas>
         </div>
@@ -445,8 +446,17 @@
     FO_180CST_3_5S: "Dầu FO 180CST 3,5S",
     KEROSENE: "Dầu hỏa",
   };
-  const FLAGSHIP_CODE = "RON95III";
-  const PRODUCT_ORDER = ["RON95III", "E5RON92", "E10RON95III", "DIESEL_0_05S", "FO_180CST_3_5S"];
+  // RON95III (non-ethanol gasoline) hasn't actually been published by MOIT
+  // since 2026-05-28 -- Vietnam's retail market has moved to E5/E10 blends
+  // (confirmed by hand, 2026-09-08: every bulletin since has exactly 4
+  // products, never RON95III -- see scripts/predict_next_cycle.py). It's
+  // real history, so it stays in the chart tabs below, but it must NEVER be
+  // the flagship or appear among "next cycle" prediction cards -- showing a
+  // phantom prediction for a discontinued product as the headline number is
+  // exactly the bug that shipped here earlier and confused a real reader.
+  const FLAGSHIP_CODE = "E10RON95III";
+  const PREDICTION_ORDER = ["E10RON95III", "E5RON92", "DIESEL_0_05S", "FO_180CST_3_5S"];
+  const PRODUCT_ORDER = ["E10RON95III", "E5RON92", "DIESEL_0_05S", "FO_180CST_3_5S", "RON95III"];
 
   function fmtVnd(n) {
     return Math.round(n).toLocaleString("vi-VN");
@@ -470,7 +480,7 @@
 
     const byCode = Object.fromEntries(predictions.map(p => [p.retail_product_code, p]));
     const flagship = byCode[FLAGSHIP_CODE] || predictions[0];
-    const others = PRODUCT_ORDER.filter(c => c !== flagship.retail_product_code && byCode[c]).map(c => byCode[c]);
+    const others = PREDICTION_ORDER.filter(c => c !== flagship.retail_product_code && byCode[c]).map(c => byCode[c]);
 
     const flagshipCaveat = flagship.known_bias_caveat
       ? `<span class="chip warn">Có xu hướng thấp hơn giá thật ~4-5%</span>` : "";
@@ -488,20 +498,6 @@
           ${flagshipCaveat}
         </div>
       </div>`;
-
-    const statsHtml = others.map(p => `
-      <div class="stat-card">
-        <div class="stat-name">${PRODUCT_LABELS[p.retail_product_code] || p.retail_product_code}</div>
-        <div class="stat-price mono">${fmtVnd(p.predicted_vnd)}<small>đ</small></div>
-        <div class="stat-range mono">${fmtVnd(p.low_vnd)} – ${fmtVnd(p.high_vnd)}</div>
-        ${p.known_bias_caveat ? '<span class="chip warn" style="width:fit-content">Xu hướng thấp hơn thật</span>' : ""}
-      </div>`).join("");
-
-    // pair the 4 "other" cards into two rows of two
-    const rows = [];
-    for (let i = 0; i < others.length; i += 2) {
-      rows.push(`<div class="stat-row">${statsHtml.split('</div>\n\n').slice(i, i + 2).join("")}</div>`);
-    }
 
     const container = document.getElementById("hero-content");
     container.innerHTML = flagshipHtml + `<div class="stat-stack">
@@ -579,7 +575,18 @@
     return getComputedStyle(document.documentElement).getPropertyValue("--accent-line").trim() || "#d97706";
   }
 
+  const DISCONTINUED_NOTE = {
+    RON95III: "Xăng RON95-III (không pha ethanol) đã ngừng được MOIT công bố giá từ 28/5/2026 -- thị trường đã chuyển sang xăng pha ethanol E5/E10. Biểu đồ dưới đây chỉ còn dữ liệu lịch sử, không có trong phần dự đoán chu kỳ tới.",
+  };
+
   async function renderChart(code) {
+    const note = document.getElementById("chart-note");
+    if (DISCONTINUED_NOTE[code]) {
+      note.textContent = DISCONTINUED_NOTE[code];
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
     const wrap = document.querySelector(".chart-canvas-wrap");
     try {
       const rows = await fetchHistory(code);

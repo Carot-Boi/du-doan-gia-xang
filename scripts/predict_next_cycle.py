@@ -80,12 +80,17 @@ from src.proxy.crude_proxy import CrudeProxySeries, ProxyFetchError, fetch_yahoo
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "db" / "moit.sqlite3"
 
-# KEROSENE is explicitly excluded from prediction: dropped as a
-# state-priced product from 29/4/2026 (Thông tư 21/2026/TT-BCT, see
-# src/parser/products.py) -- predicting a discontinued product's next
-# "cycle" isn't meaningful, and it's excluded from BRIDGE_WORLD_PRODUCTS
-# for the same reason.
-PREDICTABLE_RETAIL_PRODUCTS = [code for code in RETAIL_PRODUCTS if code != "KEROSENE"]
+# KEROSENE and RON95III are both excluded from prediction -- both are
+# effectively discontinued (see their "note" in src/parser/products.py for
+# what each is based on), and predicting a discontinued product's next
+# "cycle" isn't meaningful. Confirmed as a REAL bug, not hypothetical:
+# RON95III was still in this list until 2026-09-08, and the dashboard used
+# it as the flagship/headline number -- meaning the most prominent price on
+# the whole site was a phantom prediction for a product MOIT hasn't
+# actually priced since 2026-05-28, being silently compared by readers
+# against the real, currently-published E10RON95III number instead.
+_DISCONTINUED_RETAIL_PRODUCTS = {"KEROSENE", "RON95III"}
+PREDICTABLE_RETAIL_PRODUCTS = [code for code in RETAIL_PRODUCTS if code not in _DISCONTINUED_RETAIL_PRODUCTS]
 
 
 def next_thursday_on_or_after(d: date) -> date:

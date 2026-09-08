@@ -49,6 +49,12 @@ RETAIL_PRODUCTS = {
         "aliases": ["Xăng RON95-III", "RON95-III"],
         "unit": "VND/lit",
         "world_reference": "RON95",
+        "note": "Not published in ANY bulletin since 2026-05-28 (confirmed by hand, 2026-09-08: every "
+                "bulletin from 2026-06-04 onward lists exactly E5RON92/E10RON95III/DIESEL_0_05S/"
+                "FO_180CST_3_5S, never RON95III) -- Vietnam's retail market has moved to E5/E10 ethanol "
+                "blends. Kept in this table (unlike KEROSENE) so historical bulletins from before the "
+                "cutover still parse correctly, but excluded from prediction -- see "
+                "scripts/predict_next_cycle.py's PREDICTABLE_RETAIL_PRODUCTS.",
     },
     "E10RON95III": {
         "aliases": ["Xăng E10RON95-III", "E10RON95-III"],
