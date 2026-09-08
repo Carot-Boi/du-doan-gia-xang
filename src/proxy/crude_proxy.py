@@ -2,40 +2,40 @@
 Phase 3: a live crude-oil-price proxy for the world-price days MOIT hasn't
 published a bulletin for yet.
 
-RESEARCH RESULT (tested for real this phase, not just read about -- see
-scripts/predict_next_cycle.py's printed report and the Phase 3 writeup for
-the live numbers):
+CORRECTION (2026-09-08): the original version of this module claimed "no
+genuinely free, no-signup, DAILY option actually exists" and used FRED's
+MONTHLY Dubai crude series (POILDUBUSDM), held flat across every day within
+a month. That claim was simply wrong -- re-checked by hand after the
+project owner pointed out (correctly) that day-by-day tracking is the
+whole point of nowcasting a not-yet-published cycle. FRED also publishes
+**daily** crude series with no signup at all:
 
-- **FRED (St. Louis Fed), series `POILDUBUSDM`** ("Global price of Dubai
-  Crude"): genuinely free, no signup, no API key at all. Verified live:
-      curl https://fred.stlouisfed.org/graph/fredgraph.csv?id=POILDUBUSDM
-  returns HTTP 200 with real CSV data (confirmed during this phase, latest
-  row was 2026-07). Dubai crude is also the economically *right* benchmark
-  here -- closer to what feeds Singapore refined-product prices than
-  WTI/Brent would be. The one real limitation: it's **monthly**, not daily.
+    curl https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU
+    curl https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILWTICO
 
-- **API Ninjas** (api-ninjas.com/api/oilprice) and **OilPriceAPI.com**: both
-  confirmed (by reading their own docs) to offer a free, no-credit-card
-  tier with daily-or-better granularity. NOT integrated here, on purpose:
-  both require creating an account (email signup) to issue an API key, and
-  this agent does not create accounts on the user's behalf under any
-  circumstances, including when explicitly asked to -- that's a hard rule,
-  not a judgment call made for this project. If the project owner wants
-  either of these, they need to sign up themselves and drop the resulting
-  key into `.env` (see `.env.example` at the repo root for the expected
-  variable names) -- nothing in this module requires that to work, so nothing
-  breaks if it's never done.
+Both confirmed live (verified 2026-09-08, latest row same-week). This
+module now uses **DCOILBRENTEU** ("Crude Oil Prices: Brent - Europe"),
+not WTI and not the previous Dubai series:
 
-- **dev.mem.gov.om** (Oman): confirmed dead in an earlier research pass
-  (expired SSL certificate, both http and https). Not retried here.
+- Brent over WTI: Brent is the seaborne global benchmark that Asian
+  refined-product markets (including Singapore, where MOIT's own "giá
+  thế giới" benchmark is actually quoted -- Platts Singapore/MOPS) track
+  more closely day-to-day than WTI, which is a landlocked US benchmark
+  with its own idiosyncratic Cushing-storage dynamics.
+- Brent over the old Dubai series: Dubai/Oman is arguably the more
+  precise regional benchmark for what actually feeds Singapore refining,
+  but FRED only publishes it MONTHLY -- exactly the granularity problem
+  being fixed here. Brent is DAILY. Since src/pricing/bridge.py's
+  crude->product bridge is refit from real historical data (not a fixed
+  textbook ratio), it calibrates away most of the systematic Brent-vs-
+  actual-benchmark level difference; what daily Brent buys us is real
+  day-to-day MOVEMENT, which a stale monthly print structurally cannot
+  provide no matter which crude it's the monthly average of.
 
-DECISION: no genuinely free, no-signup, DAILY option actually exists right
-now. Rather than force a bad choice, this project uses FRED's monthly Dubai
-print as a coarse anchor, held flat (forward-filled) across the days within
-that month -- i.e. explicitly a step function, not a real daily signal.
-Every place that consumes this (src/pricing/bridge.py,
-scripts/predict_next_cycle.py) is labelled with the resulting wider
-uncertainty rather than presenting a falsely-precise daily number.
+Other sources checked and still NOT used, for the same reason as before:
+API Ninjas and OilPriceAPI.com require an account signup to issue an API
+key, and this agent does not create accounts on the user's behalf under
+any circumstances. Nothing here requires either of them.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ from datetime import date, datetime
 
 import requests
 
-FRED_SERIES_ID = "POILDUBUSDM"
+FRED_SERIES_ID = "DCOILBRENTEU"
 FRED_CSV_URL = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_SERIES_ID}"
 
 
@@ -57,45 +57,44 @@ class ProxyFetchError(RuntimeError):
 
 @dataclass(frozen=True)
 class CrudeProxySeries:
-    """A monthly (month_start_date -> USD/barrel Dubai crude) series, sorted
+    """A daily (trading_date -> USD/barrel Brent crude) series, sorted
     ascending by date. Deliberately dumb/immutable data holder so it's easy
-    to build a synthetic one for tests without touching the network."""
+    to build a synthetic one for tests without touching the network.
 
-    monthly: list[tuple[date, float]]  # [(YYYY-MM-01, value), ...] ascending
+    Only trades on weekdays (no weekend/holiday rows) -- value_on() forward-
+    fills those small gaps, which is now a genuinely minor approximation
+    (a day or two, not a whole month, unlike the previous monthly series)."""
+
+    daily: list[tuple[date, float]]  # [(YYYY-MM-DD, value), ...] ascending
 
     def as_dict(self) -> dict[str, float]:
-        """Keyed by 'YYYY-MM' string, for joining against other monthly data."""
-        return {d.strftime("%Y-%m"): v for d, v in self.monthly}
+        """Keyed by ISO 'YYYY-MM-DD' string, for exact-date joins against
+        world_price_daily rows (see src/pricing/bridge.py)."""
+        return {d.isoformat(): v for d, v in self.daily}
 
     def latest(self) -> tuple[date, float] | None:
-        return self.monthly[-1] if self.monthly else None
+        return self.daily[-1] if self.daily else None
 
     def value_on(self, d: date) -> float | None:
         """
         The proxy's value for calendar day `d`, using hold-flat (forward
-        fill) from the most recent month whose start is <= d. If `d` is
-        before every month we have, falls back to the EARLIEST known value
-        (backward fill) rather than returning None, since a caller building
-        a continuous daily series generally still wants *something* rather
-        than a hole. Returns None only if the series is empty.
-
-        This is the one place the "monthly, not daily" limitation actually
-        bites: every day within a given month gets the identical value, a
-        step function rather than real daily movement. Callers (bridge.py,
-        predict_next_cycle.py) must not present the result as more granular
-        than it is.
+        fill) from the most recent trading day whose date is <= d -- covers
+        weekends/holidays the crude market itself doesn't trade. If `d` is
+        before every date we have, falls back to the EARLIEST known value
+        (backward fill) rather than returning None. Returns None only if
+        the series is empty.
         """
-        if not self.monthly:
+        if not self.daily:
             return None
         best: float | None = None
-        for month_start, value in self.monthly:
-            if month_start <= d:
+        for day, value in self.daily:
+            if day <= d:
                 best = value
             else:
                 break
         if best is not None:
             return best
-        return self.monthly[0][1]  # d is before all known months -> backward fill
+        return self.daily[0][1]  # d is before all known days -> backward fill
 
 
 def _parse_fred_csv(text: str) -> list[tuple[date, float]]:
@@ -120,12 +119,13 @@ def _parse_fred_csv(text: str) -> list[tuple[date, float]]:
     return out
 
 
-def fetch_fred_dubai_series(start: date | None = None, timeout: float = 30.0) -> CrudeProxySeries:
+def fetch_fred_brent_series(start: date | None = None, timeout: float = 30.0) -> CrudeProxySeries:
     """
-    Fetch the live FRED "Global price of Dubai Crude" (POILDUBUSDM) series.
-    No API key required. Raises ProxyFetchError on any network/parse
-    failure -- callers decide whether that's fatal or worth falling back on
-    stale/cached data; this function does not silently swallow errors.
+    Fetch the live FRED "Crude Oil Prices: Brent - Europe" (DCOILBRENTEU)
+    daily series. No API key required. Raises ProxyFetchError on any
+    network/parse failure -- callers decide whether that's fatal or worth
+    falling back on stale/cached data; this function does not silently
+    swallow errors.
     """
     url = FRED_CSV_URL
     if start is not None:
@@ -138,4 +138,4 @@ def fetch_fred_dubai_series(start: date | None = None, timeout: float = 30.0) ->
     rows = _parse_fred_csv(resp.text)
     if not rows:
         raise ProxyFetchError(f"FRED series {FRED_SERIES_ID} returned no usable observations")
-    return CrudeProxySeries(monthly=rows)
+    return CrudeProxySeries(daily=rows)

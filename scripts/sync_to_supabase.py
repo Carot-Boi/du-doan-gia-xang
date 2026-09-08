@@ -49,7 +49,7 @@ from src.db.schema import init_db
 from src.parser.products import RETAIL_PRODUCTS
 from src.pricing.bridge import fit_all_bridges
 from src.pricing.constants import seed_constants
-from src.proxy.crude_proxy import ProxyFetchError, fetch_fred_dubai_series
+from src.proxy.crude_proxy import ProxyFetchError, fetch_fred_brent_series
 from scripts.predict_next_cycle import predict_products
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "db" / "moit.sqlite3"
@@ -184,7 +184,7 @@ def append_prediction_run(pg_conn, sqlite_conn, today: date) -> int | None:
     (a network hiccup shouldn't block the mirror sync above, which already
     committed)."""
     try:
-        crude_series = fetch_fred_dubai_series(start=date(2023, 1, 1))
+        crude_series = fetch_fred_brent_series(start=date(2023, 1, 1))
     except ProxyFetchError as e:
         print(f"  WARNING: skipping prediction snapshot -- crude proxy fetch failed: {e}")
         return None

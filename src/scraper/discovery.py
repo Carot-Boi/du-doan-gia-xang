@@ -28,6 +28,18 @@ KNOWN_SLUG_VARIANTS = [
     "thong-tin-ve-viec-dieu-hanh-gia-xang-dau",
 ]
 
+# Confirmed via the 3/9/2026 bulletin (found only by following a related-
+# articles link on minhbach.moit.gov.vn, since neither Tier 1's category nor
+# the old brute-force pattern below caught it): MOIT moved this bulletin
+# under a NEW "thong-bao" path segment
+# (/tin-tuc/thong-bao/mot-so-thong-tin-ve-viec-dieu-hanh-gia-xang-dau-ngay-3-9.html)
+# -- previously always bare /tin-tuc/{slug}-... -- and dropped the year
+# suffix entirely for it (:"ngay-3-9", not "ngay-3-9-2026"). Both are
+# real, observed site-structure changes, not guesses; kept as extra
+# candidate variants (not replacements) since older bulletins still use the
+# old bare-path + explicit-year form.
+KNOWN_CATEGORY_PREFIXES = ["", "thong-bao/"]
+
 BULLETIN_URL_KEYWORD = "dieu-hanh-gia-xang-dau"
 
 
@@ -142,6 +154,7 @@ def discover_via_brute_force(
     start: date,
     end: date,
     slug_variants: list[str] = KNOWN_SLUG_VARIANTS,
+    category_prefixes: list[str] = KNOWN_CATEGORY_PREFIXES,
     extra_delay: float = 0.0,
 ) -> list[DiscoveredBulletin]:
     """
@@ -156,15 +169,21 @@ def discover_via_brute_force(
     net in case the category-API endpoint ever stops working, and tries
     both zero-padded and non-padded day/month for both known slugs (the
     site is inconsistent about padding, e.g. "ngay-09-7-2026" vs
-    "ngay-9-4-2026").
+    "ngay-9-4-2026"), both known category prefixes (see
+    KNOWN_CATEGORY_PREFIXES's docstring), and both with/without the year
+    suffix -- MOIT has published at least one recent bulletin
+    ("...-ngay-3-9.html") with no year at all.
     """
     found: list[DiscoveredBulletin] = []
     for d in _thursdays_between(start, end):
         candidates = set()
-        for slug in slug_variants:
-            for day_fmt in (f"{d.day:02d}", str(d.day)):
-                for month_fmt in (f"{d.month:02d}", str(d.month)):
-                    candidates.add(f"{BASE_URL}/tin-tuc/{slug}-ngay-{day_fmt}-{month_fmt}-{d.year}.html")
+        for prefix in category_prefixes:
+            for slug in slug_variants:
+                for day_fmt in (f"{d.day:02d}", str(d.day)):
+                    for month_fmt in (f"{d.month:02d}", str(d.month)):
+                        base = f"{BASE_URL}/tin-tuc/{prefix}{slug}-ngay-{day_fmt}-{month_fmt}"
+                        candidates.add(f"{base}-{d.year}.html")
+                        candidates.add(f"{base}.html")
 
         for url in candidates:
             try:

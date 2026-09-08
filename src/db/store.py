@@ -71,13 +71,27 @@ def upsert_bulletin_record(
 
 def store_world_price_daily(conn: sqlite3.Connection, bulletin_id: int, rows: list[dict]) -> tuple[int, int]:
     """
-    Append-only insert. Returns (inserted_count, conflict_count).
+    Append-only ACROSS DIFFERENT bulletins, but replace-on-reparse for the
+    SAME bulletin_id -- these are different things, and conflating them was
+    a real bug (confirmed 2026-09-08, same category as store_cycle_summary's
+    already-documented one): backfill.py re-parses and re-stores every
+    discovered bulletin on every run, not just newly-discovered ones (see
+    its own docstring -- "re-running just refreshes already-known
+    bulletins' parse results"), so without deleting this bulletin_id's own
+    prior rows first, every single run (including every future weekly CI
+    run) would silently double this table's row count forever, not just
+    once. Deleting-then-inserting for THIS bulletin_id preserves the real
+    append-only guarantee this table exists for -- a DIFFERENT, later
+    bulletin_id restating an earlier date's price still lands as a new row
+    and is still flagged as a conflict below.
 
-    A "conflict" is a new row whose price differs from a PRIOR bulletin's
-    stored price for the same (product_code, quote_date) — flagged, not
-    overwritten, per spec: this is signal that MOIT revised a historical
-    quote, not something to silently discard.
+    Returns (inserted_count, conflict_count). A "conflict" is a new row
+    whose price differs from a PRIOR bulletin's stored price for the same
+    (product_code, quote_date) — flagged, not overwritten, per spec: this
+    is signal that MOIT revised a historical quote, not something to
+    silently discard.
     """
+    conn.execute("DELETE FROM world_price_daily WHERE source_bulletin_id = ?", (bulletin_id,))
     inserted, conflicts = 0, 0
     for r in rows:
         quote_date_iso = _iso(r["quote_date"])

@@ -76,7 +76,7 @@ from src.pricing.calibrate import (
 )
 from src.pricing.constants import MissingConstantError, seed_constants
 from src.pricing.formula import compute_gia_co_so
-from src.proxy.crude_proxy import CrudeProxySeries, ProxyFetchError, fetch_fred_dubai_series
+from src.proxy.crude_proxy import CrudeProxySeries, ProxyFetchError, fetch_fred_brent_series
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "db" / "moit.sqlite3"
 
@@ -289,7 +289,7 @@ def predict_products(
             continue
 
         # Uncertainty band: the bridge's own historical fit residual (how
-        # far actual monthly product prices strayed from the fitted line),
+        # far actual daily product prices strayed from the fitted line),
         # widened for the forecast portion of the window since those days
         # have no real crude signal behind them at all (pure hold-flat).
         # This is a simple, honestly-labelled heuristic, not a rigorous
@@ -354,30 +354,30 @@ def main() -> None:
 
     print("--- Step 1: live crude-oil proxy ---")
     try:
-        crude_series = fetch_fred_dubai_series(start=date(2023, 1, 1))
+        crude_series = fetch_fred_brent_series(start=date(2023, 1, 1))
     except ProxyFetchError as e:
-        print(f"FATAL: could not fetch the crude proxy (FRED POILDUBUSDM): {e}")
+        print(f"FATAL: could not fetch the crude proxy (FRED DCOILBRENTEU): {e}")
         sys.exit(1)
     latest = crude_series.latest()
-    print(f"FRED 'Global price of Dubai Crude' (POILDUBUSDM): {len(crude_series.monthly)} monthly points fetched, "
+    print(f"FRED 'Crude Oil Prices: Brent - Europe' (DCOILBRENTEU): {len(crude_series.daily)} daily points fetched, "
           f"live, no API key.")
     if latest:
         print(f"  Latest observation: {latest[0].isoformat()} = {latest[1]:.2f} USD/bbl")
-    print("  NOTE: monthly granularity only -- every day within a month gets this same value")
-    print("  (held flat / forward-filled). See src/proxy/crude_proxy.py docstring for why API")
+    print("  DAILY granularity (weekends/holidays forward-filled from the last trading day).")
+    print("  See src/proxy/crude_proxy.py docstring for why Brent (not Dubai/WTI) and why API")
     print("  Ninjas / OilPriceAPI.com (both need account signup) weren't used instead.\n")
 
-    print("--- Step 2: crude -> refined-product bridge fit (OLS on monthly averages) ---")
+    print("--- Step 2: crude -> refined-product bridge fit (OLS on daily pairs) ---")
     bridges = fit_all_bridges(conn, crude_series)
     for code in BRIDGE_WORLD_PRODUCTS:
         b = bridges.get(code)
         if b is None:
-            print(f"  {code:15s} -- no usable bridge (insufficient overlapping months)")
+            print(f"  {code:15s} -- no usable bridge (insufficient overlapping days)")
             continue
         r_str = f"{b.r:.3f}" if b.r is not None else "n/a"
         std_str = f"{b.residual_std:.2f}" if b.residual_std is not None else "n/a"
         print(
-            f"  {code:15s} n={b.n:2d} months ({b.months[0]}..{b.months[-1]})  "
+            f"  {code:15s} n={b.n:4d} days ({b.months[0]}..{b.months[-1]})  "
             f"price = {b.intercept:8.2f} + {b.slope:6.3f} * crude   r={r_str}  resid_std={std_str}"
         )
     print()

@@ -48,7 +48,7 @@ _WORLD_MONTHLY = {
 _MONTH_TO_DAY = {"2026-05": "2026-05-15", "2026-06": "2026-06-15", "2026-07": "2026-07-02"}
 
 _CRUDE_SERIES = CrudeProxySeries(
-    monthly=[(date(2026, 5, 1), 70.0), (date(2026, 6, 1), 80.0), (date(2026, 7, 1), 90.0)]
+    daily=[(date(2026, 5, 1), 70.0), (date(2026, 6, 1), 80.0), (date(2026, 7, 1), 90.0)]
 )
 
 _PREV_CYCLE_DATE = date(2026, 7, 2)

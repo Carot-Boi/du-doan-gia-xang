@@ -22,10 +22,10 @@ import pytest
 from src.db.schema import init_db
 from src.pricing.bridge import (
     BridgeFitError,
+    daily_pairs_by_product,
     fit_all_bridges,
     fit_bridge_for_product,
     fit_linear,
-    monthly_avg_by_product,
 )
 from src.proxy.crude_proxy import CrudeProxySeries
 
@@ -89,28 +89,30 @@ def _insert_daily(conn, product_code: str, quote_date: str, price: float, bullet
     )
 
 
-def test_monthly_avg_by_product_groups_by_calendar_month(conn):
+def test_daily_pairs_by_product_forward_fills_crude_gaps(conn):
     _insert_daily(conn, "RON92", "2026-01-05", 100.0)
-    _insert_daily(conn, "RON92", "2026-01-10", 110.0)
-    _insert_daily(conn, "RON92", "2026-02-01", 200.0)
+    _insert_daily(conn, "RON92", "2026-01-10", 110.0)  # crude has no exact match -> forward-fill from 01-08
     conn.commit()
 
-    result = monthly_avg_by_product(conn, "RON92")
-    assert result == {"2026-01": pytest.approx(105.0), "2026-02": pytest.approx(200.0)}
+    crude = CrudeProxySeries(daily=[(date(2026, 1, 5), 80.0), (date(2026, 1, 8), 82.0)])
+    dates, xs, ys = daily_pairs_by_product(conn, "RON92", crude)
+    assert dates == ["2026-01-05", "2026-01-10"]
+    assert xs == [pytest.approx(80.0), pytest.approx(82.0)]  # 01-10 forward-filled from 01-08
+    assert ys == [pytest.approx(100.0), pytest.approx(110.0)]
 
 
 def test_fit_bridge_for_product_matches_manual_ols(conn):
-    # Product price = 10 + 1.5 * crude, exactly, across 3 months.
+    # Product price = 10 + 1.5 * crude, exactly, across 3 days.
     _insert_daily(conn, "RON92", "2026-01-15", 10 + 1.5 * 80.0)
     _insert_daily(conn, "RON92", "2026-02-15", 10 + 1.5 * 90.0)
     _insert_daily(conn, "RON92", "2026-03-15", 10 + 1.5 * 100.0)
     conn.commit()
 
     crude = CrudeProxySeries(
-        monthly=[
-            (date(2026, 1, 1), 80.0),
-            (date(2026, 2, 1), 90.0),
-            (date(2026, 3, 1), 100.0),
+        daily=[
+            (date(2026, 1, 15), 80.0),
+            (date(2026, 2, 15), 90.0),
+            (date(2026, 3, 15), 100.0),
         ]
     )
 
@@ -121,12 +123,13 @@ def test_fit_bridge_for_product_matches_manual_ols(conn):
     assert fit.residual_std == pytest.approx(0.0, abs=1e-6)
     assert fit.r == pytest.approx(1.0, abs=1e-6)
     assert fit.predict(120.0) == pytest.approx(10 + 1.5 * 120.0, abs=1e-6)
+    assert fit.months == ["2026-01", "2026-02", "2026-03"]
 
 
 def test_fit_bridge_for_product_raises_with_insufficient_overlap(conn):
     _insert_daily(conn, "RON92", "2026-01-15", 100.0)
     conn.commit()
-    crude = CrudeProxySeries(monthly=[(date(2026, 1, 1), 80.0)])
+    crude = CrudeProxySeries(daily=[(date(2026, 1, 15), 80.0)])
     with pytest.raises(BridgeFitError):
         fit_bridge_for_product(conn, "RON92", crude)
 
@@ -134,25 +137,25 @@ def test_fit_bridge_for_product_raises_with_insufficient_overlap(conn):
 def test_fit_all_bridges_skips_products_without_enough_data(conn):
     _insert_daily(conn, "RON92", "2026-01-15", 100.0)
     _insert_daily(conn, "RON92", "2026-02-15", 110.0)
-    # DIESEL_0_05S has only one month -> should be skipped, not raise.
+    # DIESEL_0_05S has only one day -> should be skipped, not raise.
     _insert_daily(conn, "DIESEL_0_05S", "2026-01-15", 90.0)
     conn.commit()
 
-    crude = CrudeProxySeries(monthly=[(date(2026, 1, 1), 80.0), (date(2026, 2, 1), 85.0)])
+    crude = CrudeProxySeries(daily=[(date(2026, 1, 15), 80.0), (date(2026, 2, 15), 85.0)])
     bridges = fit_all_bridges(conn, crude, world_products=["RON92", "DIESEL_0_05S"])
     assert "RON92" in bridges
     assert "DIESEL_0_05S" not in bridges
 
 
 def test_crude_proxy_series_value_on_forward_fills():
-    series = CrudeProxySeries(monthly=[(date(2026, 1, 1), 80.0), (date(2026, 3, 1), 100.0)])
-    assert series.value_on(date(2026, 1, 15)) == pytest.approx(80.0)  # within Jan
-    assert series.value_on(date(2026, 2, 20)) == pytest.approx(80.0)  # Feb has no data -> hold Jan flat
+    series = CrudeProxySeries(daily=[(date(2026, 1, 1), 80.0), (date(2026, 3, 1), 100.0)])
+    assert series.value_on(date(2026, 1, 15)) == pytest.approx(80.0)  # after Jan 1, before Mar 1 -> hold Jan flat
+    assert series.value_on(date(2026, 2, 20)) == pytest.approx(80.0)  # still holding Jan 1's value flat
     assert series.value_on(date(2026, 3, 5)) == pytest.approx(100.0)  # into March
     assert series.value_on(date(2026, 4, 1)) == pytest.approx(100.0)  # beyond latest -> hold flat
     assert series.value_on(date(2025, 12, 1)) == pytest.approx(80.0)  # before earliest -> backward fill
 
 
 def test_crude_proxy_series_value_on_empty_series_returns_none():
-    series = CrudeProxySeries(monthly=[])
+    series = CrudeProxySeries(daily=[])
     assert series.value_on(date(2026, 1, 1)) is None
