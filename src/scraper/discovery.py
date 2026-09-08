@@ -210,11 +210,23 @@ def discover_all(
     session: PoliteSession,
     brute_force_start: date | None = None,
     brute_force_end: date | None = None,
+    already_known_dates: frozenset[date] = frozenset(),
 ) -> tuple[list[DiscoveredBulletin], dict]:
     """
     Run Tier 1, then Tier 2 only over any gaps Tier 1 didn't cover (if a
     date range is given). Returns (bulletins, stats) where stats records
     which tier contributed what, for an honest backfill report.
+
+    `already_known_dates` lets a caller (backfill.py) pass in bulletin
+    dates it already has safely stored locally -- e.g. from a previous
+    run's DB -- so Tier 2 doesn't re-probe Thursdays it has no actual need
+    to. Confirmed necessary in practice, not just in theory: discover_all()
+    has no knowledge of the caller's own DB on its own, so without this,
+    EVERY run (including every future weekly CI run) re-brute-forces every
+    historical gap Thursday from scratch -- one real run measured 125
+    Thursdays x ~32 candidate URLs each, over an hour, hammering MOIT's
+    site with hundreds of unnecessary requests for bulletins already on
+    disk from the previous run.
     """
     stats = {"tier1_found": 0, "tier2_found": 0, "tier2_probed": 0}
     tier1 = []
@@ -227,7 +239,7 @@ def discover_all(
     all_bulletins = list(tier1)
 
     if brute_force_start and brute_force_end:
-        known_dates = {b.publish_time.date() for b in tier1 if b.publish_time}
+        known_dates = {b.publish_time.date() for b in tier1 if b.publish_time} | set(already_known_dates)
         gap_thursdays = [d for d in _thursdays_between(brute_force_start, brute_force_end) if d not in known_dates]
         if gap_thursdays:
             gap_start, gap_end = min(gap_thursdays), max(gap_thursdays)

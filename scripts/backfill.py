@@ -4,6 +4,7 @@ raw HTML, parse them, and store structured results in the local SQLite DB.
 
 Usage:
     python scripts/backfill.py [--db data/db/moit.sqlite3] [--limit N] [--no-brute-force]
+                                [--brute-force-days N]
 
 Designed to be safely re-run: bulletins are keyed by URL (UNIQUE), so
 re-running just refreshes already-known bulletins' parse results and picks
@@ -18,7 +19,7 @@ import argparse
 import sys
 import time
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 # Bulletin titles/warnings contain Vietnamese text. On Windows, stdout is
@@ -44,9 +45,25 @@ from src.scraper.http import PoliteSession
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "db" / "moit.sqlite3"
 
 
-def run_backfill(db_path: Path, limit: int | None, use_brute_force: bool) -> None:
+def _bulletin_dates_already_in_db(conn) -> frozenset[date]:
+    """Bulletin dates this DB already has stored, from any prior run --
+    passed into discover_all() so Tier 2 doesn't re-probe Thursdays whose
+    bulletin is already safely on disk. See discover_all()'s docstring for
+    why this matters in practice, not just in theory."""
+    rows = conn.execute("SELECT DISTINCT bulletin_date FROM bulletins WHERE bulletin_date IS NOT NULL").fetchall()
+    out = set()
+    for (d,) in rows:
+        try:
+            out.add(date.fromisoformat(d))
+        except (TypeError, ValueError):
+            continue
+    return frozenset(out)
+
+
+def run_backfill(db_path: Path, limit: int | None, use_brute_force: bool, brute_force_days: int | None = 120) -> None:
     session = PoliteSession()
     conn = init_db(str(db_path))
+    already_known_dates = _bulletin_dates_already_in_db(conn)
 
     print("=== Tier 1: discovering bulletins via category listing API ===")
     bulletins, stats = discover_all(
@@ -78,9 +95,35 @@ def run_backfill(db_path: Path, limit: int | None, use_brute_force: bool) -> Non
             # is current again (e.g. by hand-checking
             # https://moit.gov.vn/tin-tuc/thi-truong-trong-nuoc against
             # today's actual latest bulletin).
-            gap_start, gap_end = min(known_dates), max(max(known_dates), date.today())
+            #
+            # gap_start is windowed to the last `brute_force_days` days by
+            # default (not the full min(known_dates), which can be back to
+            # 2022). Confirmed necessary in practice (2026-09-08): most of
+            # the ~235 Thursdays since 2022 have no bulletin at all (MOIT
+            # doesn't publish every single week), so "gap Thursdays" stayed
+            # ~120-125 every run even after already_known_dates started
+            # skipping Thursdays whose bulletin IS already stored -- there's
+            # no cache of "already confirmed no bulletin here" to skip the
+            # rest, so a full-history scan re-probes essentially the same
+            # ~120 empty Thursdays forever. One real run at the old
+            # unwindowed scope took over an hour on GitHub Actions. Old
+            # bulletins from years ago are also for all practical purposes
+            # never going to newly appear -- the risk this project actually
+            # cares about (MOIT silently changing its URL scheme, per the
+            # d96338e and f056a37 commits) is a RECENT-week phenomenon, not
+            # a 2023 one. Pass --brute-force-days 0 (or a very large number)
+            # for an explicit full-history rescan when actually needed (e.g.
+            # after another URL-scheme change is suspected somewhere in the
+            # older history too).
+            gap_start_floor = min(known_dates)
+            if brute_force_days:
+                gap_start_floor = max(gap_start_floor, date.today() - timedelta(days=brute_force_days))
+            gap_start, gap_end = gap_start_floor, max(max(known_dates), date.today())
             print(f"=== Tier 2: brute-force gap-fill probing Thursdays in [{gap_start}, {gap_end}] ===")
-            bulletins2, stats2 = discover_all(session, brute_force_start=gap_start, brute_force_end=gap_end)
+            bulletins2, stats2 = discover_all(
+                session, brute_force_start=gap_start, brute_force_end=gap_end,
+                already_known_dates=already_known_dates,
+            )
             print(f"Tier 2 (brute_force) probed {stats2.get('tier2_probed', 0)} candidate Thursdays, "
                   f"found {stats2.get('tier2_found', 0)} additional bulletins")
             existing = {b.url for b in bulletins}
@@ -148,8 +191,16 @@ def main():
     ap.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     ap.add_argument("--limit", type=int, default=None, help="Only process the N most recent discovered bulletins")
     ap.add_argument("--no-brute-force", action="store_true", help="Skip the Tier-2 brute-force gap fill")
+    ap.add_argument(
+        "--brute-force-days", type=int, default=120,
+        help="Only Tier-2 gap-fill Thursdays within this many days of today (default 120). "
+             "Pass 0 to scan the full history instead (slow -- see run_backfill()'s comment).",
+    )
     args = ap.parse_args()
-    run_backfill(args.db, args.limit, use_brute_force=not args.no_brute_force)
+    run_backfill(
+        args.db, args.limit, use_brute_force=not args.no_brute_force,
+        brute_force_days=args.brute_force_days or None,
+    )
 
 
 if __name__ == "__main__":
