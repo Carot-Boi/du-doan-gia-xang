@@ -76,7 +76,7 @@ from src.pricing.calibrate import (
 )
 from src.pricing.constants import MissingConstantError, seed_constants
 from src.pricing.formula import compute_gia_co_so
-from src.proxy.crude_proxy import CrudeProxySeries, ProxyFetchError, fetch_fred_brent_series
+from src.proxy.crude_proxy import CrudeProxySeries, ProxyFetchError, fetch_yahoo_brent_series
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "db" / "moit.sqlite3"
 
@@ -354,18 +354,17 @@ def main() -> None:
 
     print("--- Step 1: live crude-oil proxy ---")
     try:
-        crude_series = fetch_fred_brent_series(start=date(2023, 1, 1))
+        crude_series = fetch_yahoo_brent_series()
     except ProxyFetchError as e:
-        print(f"FATAL: could not fetch the crude proxy (FRED DCOILBRENTEU): {e}")
+        print(f"FATAL: could not fetch the crude proxy (Yahoo Finance BZ=F): {e}")
         sys.exit(1)
     latest = crude_series.latest()
-    print(f"FRED 'Crude Oil Prices: Brent - Europe' (DCOILBRENTEU): {len(crude_series.daily)} daily points fetched, "
-          f"live, no API key.")
+    print(f"Yahoo Finance Brent front-month futures (BZ=F): {len(crude_series.daily)} daily points fetched, "
+          f"near-real-time, no API key.")
     if latest:
         print(f"  Latest observation: {latest[0].isoformat()} = {latest[1]:.2f} USD/bbl")
-    print("  DAILY granularity (weekends/holidays forward-filled from the last trading day).")
-    print("  See src/proxy/crude_proxy.py docstring for why Brent (not Dubai/WTI) and why API")
-    print("  Ninjas / OilPriceAPI.com (both need account signup) weren't used instead.\n")
+    print("  Near-real-time (today's live intraday price included, not a week-stale settlement print --")
+    print("  see src/proxy/crude_proxy.py docstring for why FRED's own daily series was replaced).")
 
     print("--- Step 2: crude -> refined-product bridge fit (OLS on daily pairs) ---")
     bridges = fit_all_bridges(conn, crude_series)

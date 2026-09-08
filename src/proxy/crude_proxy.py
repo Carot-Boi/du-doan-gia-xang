@@ -2,57 +2,53 @@
 Phase 3: a live crude-oil-price proxy for the world-price days MOIT hasn't
 published a bulletin for yet.
 
-CORRECTION (2026-09-08): the original version of this module claimed "no
-genuinely free, no-signup, DAILY option actually exists" and used FRED's
-MONTHLY Dubai crude series (POILDUBUSDM), held flat across every day within
-a month. That claim was simply wrong -- re-checked by hand after the
-project owner pointed out (correctly) that day-by-day tracking is the
-whole point of nowcasting a not-yet-published cycle. FRED also publishes
-**daily** crude series with no signup at all:
+SECOND CORRECTION (2026-09-08, same day as the first): the FRED-based
+version of this module (DCOILBRENTEU, "daily") was still wrong in a way
+that mattered a lot -- FRED's daily oil series themselves lag real trading
+by close to a WEEK (confirmed by hand: on 2026-09-08, FRED's latest
+DCOILBRENTEU point was still 2026-09-01's 96.02). The project owner caught
+this directly: crude had visibly kept climbing (WTI ~85-86 at the last
+real MOIT bulletin's cycle, ~93 as of today) while this module's own
+forward-filled value was stuck a week behind, at one point making a
+next-cycle PREDICTION move in the opposite direction of where crude
+actually was -- not just imprecise, actively backwards.
 
-    curl https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU
-    curl https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILWTICO
+NEW SOURCE: Yahoo Finance's chart endpoint for the front-month futures
+contract (unofficial, undocumented by Yahoo, but widely used, free, no
+signup, no API key):
 
-Both confirmed live (verified 2026-09-08, latest row same-week). This
-module now uses **DCOILBRENTEU** ("Crude Oil Prices: Brent - Europe"),
-not WTI and not the previous Dubai series:
+    https://query1.finance.yahoo.com/v8/finance/chart/BZ=F?interval=1d&range=2y
 
-- Brent over WTI: Brent is the seaborne global benchmark that Asian
-  refined-product markets (including Singapore, where MOIT's own "giá
-  thế giới" benchmark is actually quoted -- Platts Singapore/MOPS) track
-  more closely day-to-day than WTI, which is a landlocked US benchmark
-  with its own idiosyncratic Cushing-storage dynamics.
-- Brent over the old Dubai series: Dubai/Oman is arguably the more
-  precise regional benchmark for what actually feeds Singapore refining,
-  but FRED only publishes it MONTHLY -- exactly the granularity problem
-  being fixed here. Brent is DAILY. Since src/pricing/bridge.py's
-  crude->product bridge is refit from real historical data (not a fixed
-  textbook ratio), it calibrates away most of the systematic Brent-vs-
-  actual-benchmark level difference; what daily Brent buys us is real
-  day-to-day MOVEMENT, which a stale monthly print structurally cannot
-  provide no matter which crude it's the monthly average of.
+Verified live (2026-09-08): returns near-real-time intraday price
+(`meta.regularMarketPrice`, updated within the trading session -- not a
+settlement print from a week ago) AND 505 daily closes spanning 2 years,
+which is MORE history than FRED's Brent series gave us, not less. BZ=F is
+the Brent Crude front-month futures contract; CL=F (WTI) is available the
+same way if ever needed.
 
-Other sources checked and still NOT used, for the same reason as before:
-API Ninjas and OilPriceAPI.com require an account signup to issue an API
-key, and this agent does not create accounts on the user's behalf under
-any circumstances. Nothing here requires either of them.
+This is an unofficial endpoint with no SLA or documented stability
+guarantee -- Yahoo could change or block it without notice. Accepted
+trade-off: it is measurably, materially more accurate for THIS project's
+actual use (nowcasting the next few days) than a "genuinely documented"
+source that is a week stale. If this endpoint ever breaks, ProxyFetchError
+surfaces it loudly (see fetch_yahoo_brent_series()) rather than silently
+falling back to stale data.
 """
 
 from __future__ import annotations
 
-import csv
-import io
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 import requests
 
-FRED_SERIES_ID = "DCOILBRENTEU"
-FRED_CSV_URL = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_SERIES_ID}"
+YAHOO_SYMBOL = "BZ=F"  # Brent Crude front-month futures
+YAHOO_CHART_URL = f"https://query1.finance.yahoo.com/v8/finance/chart/{YAHOO_SYMBOL}"
+_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; du-doan-gia-xang-bot/0.1)"}
 
 
 class ProxyFetchError(RuntimeError):
-    """Raised when the live FRED feed can't be fetched or parsed."""
+    """Raised when the live proxy feed can't be fetched or parsed."""
 
 
 @dataclass(frozen=True)
@@ -62,8 +58,7 @@ class CrudeProxySeries:
     to build a synthetic one for tests without touching the network.
 
     Only trades on weekdays (no weekend/holiday rows) -- value_on() forward-
-    fills those small gaps, which is now a genuinely minor approximation
-    (a day or two, not a whole month, unlike the previous monthly series)."""
+    fills those small gaps."""
 
     daily: list[tuple[date, float]]  # [(YYYY-MM-DD, value), ...] ascending
 
@@ -97,45 +92,54 @@ class CrudeProxySeries:
         return self.daily[0][1]  # d is before all known days -> backward fill
 
 
-def _parse_fred_csv(text: str) -> list[tuple[date, float]]:
-    reader = csv.reader(io.StringIO(text))
-    header = next(reader, None)
-    if not header or len(header) < 2:
-        raise ProxyFetchError(f"unexpected FRED CSV header: {header!r}")
-    out: list[tuple[date, float]] = []
-    for row in reader:
-        if len(row) < 2:
-            continue
-        raw_date, raw_value = row[0], row[1]
-        if raw_value in ("", "."):
-            continue  # FRED's own "no observation" marker -- not an error
-        try:
-            d = datetime.strptime(raw_date, "%Y-%m-%d").date()
-            v = float(raw_value)
-        except ValueError:
-            continue
-        out.append((d, v))
-    out.sort(key=lambda pair: pair[0])
-    return out
-
-
-def fetch_fred_brent_series(start: date | None = None, timeout: float = 30.0) -> CrudeProxySeries:
+def fetch_yahoo_brent_series(range_: str = "2y", timeout: float = 30.0) -> CrudeProxySeries:
     """
-    Fetch the live FRED "Crude Oil Prices: Brent - Europe" (DCOILBRENTEU)
-    daily series. No API key required. Raises ProxyFetchError on any
-    network/parse failure -- callers decide whether that's fatal or worth
-    falling back on stale/cached data; this function does not silently
-    swallow errors.
+    Fetch Yahoo Finance's daily-close history for Brent front-month futures
+    (BZ=F), PLUS today's near-real-time intraday price appended as the
+    latest point if the market is still trading today's session (so a
+    same-day price move -- exactly what caught the previous bug -- shows up
+    immediately instead of waiting for tomorrow's daily close).
+
+    No API key required. Raises ProxyFetchError on any network/parse
+    failure -- callers decide whether that's fatal or worth falling back on
+    stale/cached data; this function does not silently swallow errors.
     """
-    url = FRED_CSV_URL
-    if start is not None:
-        url += f"&cosd={start.isoformat()}"
     try:
-        resp = requests.get(url, timeout=timeout, headers={"User-Agent": "du-doan-gia-xang-bot/0.1"})
+        resp = requests.get(
+            YAHOO_CHART_URL, params={"interval": "1d", "range": range_}, timeout=timeout, headers=_HEADERS,
+        )
         resp.raise_for_status()
-    except requests.RequestException as e:
-        raise ProxyFetchError(f"could not fetch FRED series {FRED_SERIES_ID}: {e}") from e
-    rows = _parse_fred_csv(resp.text)
+        payload = resp.json()
+    except (requests.RequestException, ValueError) as e:
+        raise ProxyFetchError(f"could not fetch Yahoo Finance chart for {YAHOO_SYMBOL}: {e}") from e
+
+    try:
+        result = payload["chart"]["result"][0]
+        meta = result["meta"]
+        gmtoffset = meta.get("gmtoffset", 0)
+        tz = timezone(timedelta(seconds=gmtoffset))
+        timestamps = result["timestamp"]
+        closes = result["indicators"]["quote"][0]["close"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise ProxyFetchError(f"unexpected Yahoo Finance chart response shape for {YAHOO_SYMBOL}: {e}") from e
+
+    rows: dict[date, float] = {}
+    for ts, close in zip(timestamps, closes):
+        if close is None:
+            continue
+        d = datetime.fromtimestamp(ts, tz=tz).date()
+        rows[d] = float(close)  # later (more complete) daily bars overwrite earlier partial ones for the same date
+
+    # Append/overwrite with today's live intraday price, if present and
+    # newer than the last daily close -- this is the whole point: don't
+    # wait for a settlement print to see a same-day move.
+    live_price = meta.get("regularMarketPrice")
+    live_time = meta.get("regularMarketTime")
+    if live_price is not None and live_time is not None:
+        live_date = datetime.fromtimestamp(live_time, tz=tz).date()
+        rows[live_date] = float(live_price)
+
     if not rows:
-        raise ProxyFetchError(f"FRED series {FRED_SERIES_ID} returned no usable observations")
-    return CrudeProxySeries(daily=rows)
+        raise ProxyFetchError(f"Yahoo Finance chart for {YAHOO_SYMBOL} returned no usable observations")
+
+    return CrudeProxySeries(daily=sorted(rows.items()))

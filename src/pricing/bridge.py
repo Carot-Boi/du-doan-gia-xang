@@ -1,9 +1,10 @@
 """
 Phase 3: the crude-oil -> Singapore refined-product "bridge".
 
-The chosen crude proxy (src/proxy/crude_proxy.py -- FRED's DAILY Brent
-crude print, see that module's docstring for why Brent/daily) tracks CRUDE
-oil, not the refined-product quotes (RON92, RON95, DIESEL_0_05S,
+The chosen crude proxy (src/proxy/crude_proxy.py -- Yahoo Finance's
+near-real-time DAILY Brent futures print, see that module's docstring for
+why Brent/daily/Yahoo) tracks CRUDE oil, not the refined-product quotes
+(RON92, RON95, DIESEL_0_05S,
 FO_180CST_3_5S) MOIT's own formula actually uses. Those move together but
 not 1:1 -- refining margins ("crack spreads") widen and narrow with
 refinery utilization, seasonal demand, etc. This module fits the simplest
@@ -16,8 +17,9 @@ used to be monthly (FRED/POILDUBUSDM), so pairing it against
 world_price_daily's individual daily rows would have just repeated the
 same crude value across every day in a month (pseudo-replication, not more
 information) -- hence the old design averaged both sides to one point per
-calendar month first. Now that the crude proxy is itself daily
-(DCOILBRENTEU), that workaround is gone: each world_price_daily row is
+calendar month first. Now that the crude proxy is itself daily (and
+near-real-time -- see crude_proxy.py), that workaround is gone: each
+world_price_daily row is
 paired directly against the crude proxy's value for that SAME calendar
 date (via CrudeProxySeries.value_on(), which forward-fills the crude
 series' own weekend/holiday gaps only -- a day or two, not a month). This
